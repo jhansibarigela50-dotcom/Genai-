@@ -1,38 +1,92 @@
 import streamlit as st
-from google import genai
+import google.generativeai as genai
 
-st.set_page_config(page_title="Gemini Chat")
-st.title("Gemini Chat")
+# 1. 🔑 API Setup via Streamlit Secrets
+try:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    # 1.5 Flash is used for the fastest possible response times
+    model = genai.GenerativeModel("gemini-2.5-flash")
+except Exception:
+    st.error("API Key not found. Please add 'GEMINI_API_KEY' to your Secrets.")
 
-client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+# 2. ⚡ Multilingual Dictionary (Stored in Session to prevent re-loading)
+if "translations" not in st.session_state:
+    st.session_state.translations = {
+        "English": {"title": "🌱 Smart Farming Assistant", "loc": "Location", "stage": "Stage", "stages": ["Planting", "Growing", "Harvesting"], "const": "Constraints", "ask": "Your question", "btn": "Get Advice", "header": "Advice", "err": "Enter a question."},
+        "Hindi (हिन्दी)": {"title": "🌱 स्मार्ट खेती सहायक", "loc": "स्थान", "stage": "चरण", "stages": ["बुवाई", "बढ़त", "कटाई"], "const": "सीमाएं", "ask": "प्रश्न", "btn": "सलाह लें", "header": "सुझाव", "err": "प्रश्न लिखें।"},
+        "Bengali (বাংলা)": {"title": "🌱 স্মার্ট ফার্মিং সহকারী", "loc": "অবস্থান", "stage": "পর্যায়", "stages": ["রোপণ", "বৃদ্ধি", "কাটা"], "const": "সীমাবদ্ধতা", "ask": "প্রশ্ন", "btn": "পরামর্শ", "header": "পরামর্শ", "err": "প্রশ্ন লিখুন।"},
+        "Telugu (తెలుగు)": {"title": "🌱 స్మార్ట్ ఫార్మింగ్ అసిస్టెంట్", "loc": "ప్రాంతం", "stage": "దశ", "stages": ["నాటడం", "పెరుగుదల", "కోత"], "const": "పరిమితులు", "ask": "మీ ప్రశ్న", "btn": "సలహా", "header": "సలహా", "err": "ప్రశ్న రాయండి."},
+        "Marathi (मराठी)": {"title": "🌱 स्मार्ट शेती सहाय्यक", "loc": "ठिकाण", "stage": "अवस्था", "stages": ["लागवड", "वाढ", "काढणी"], "const": "मर्यादा", "ask": "तुमचा प्रश्न", "btn": "सल्ला", "header": "सल्ला", "err": "प्रश्न लिहा."},
+        "Tamil (தமிழ்)": {"title": "🌱 ஸ்மார்ட் விவசாய உதவியாளர்", "loc": "இருப்பிடம்", "stage": "நிலை", "stages": ["நடவு", "வளர்ச்சி", "அறுவடை"], "const": "கட்டுப்பாடுகள்", "ask": "கேள்வி", "btn": "ஆலோசனை", "header": "ஆலோசனை", "err": "கேள்வியை உள்ளிடவும்."},
+        "Urdu (اردو)": {"title": "🌱 سمارٹ فارمنگ اسسٹنٹ", "loc": "مقام", "stage": "مرحلہ", "stages": ["کاشت", "نشوونما", "کٹائی"], "const": "پابندیاں", "ask": "سوال", "btn": "مشورہ", "header": "مشورہ", "err": "سوال لکھیں۔"},
+        "Gujarati (ગુજરાતી)": {"title": "🌱 સ્માર્ટ ફાર્મિંગ સહાયક", "loc": "સ્થાન", "stage": "તબક્કો", "stages": ["વાવણી", "વિકાસ", "લણણી"], "const": "મર્યાદાઓ", "ask": "પ્રશ્ન", "btn": "સલાહ", "header": "સલાહ", "err": "પ્રશ્ન લખો."},
+        "Kannada (ಕನ್ನಡ)": {"title": "🌱 ಸ್ಮಾರ್ಟ್ ಕೃಷಿ ಸಹಾಯಕ", "loc": "ಸ್ಥಳ", "stage": "ಹಂತ", "stages": ["ಬಿತ್ತನೆ", "ಬೆಳವಣಿಗೆ", "ಕಟಾವು"], "const": "ಮಿತಿಗಳು", "ask": "ಪ್ರಶ್ನೆ", "btn": "ಸಲಹೆ", "header": "ಸಲಹೆ", "err": "ಪ್ರಶ್ನೆ ಬರೆಯಿರಿ."},
+        "Odia (ଓଡ଼ିଆ)": {"title": "🌱 ସ୍ମାର୍ଟ କୃଷି ସହାୟକ", "loc": "ସ୍ଥାନ", "stage": "ପର୍ଯ୍ୟାୟ", "stages": ["ବୁଣିବା", "ବଢିବା", "ଅମଳ"], "const": "ପ୍ରତିବନ୍ଧକ", "ask": "ପ୍ରଶ୍ନ", "btn": "ପରାମର୍ଶ", "header": "ପରାମର୍ଶ", "err": "ପ୍ରଶ୍ନ ଲେଖନ୍ତୁ।"},
+        "Malayalam (മലയാളം)": {"title": "🌱 സ്മാർട്ട് ഫാമിംഗ് അസിസ്റ്റന്റ്", "loc": "സ്ഥലം", "stage": "ഘട്ടം", "stages": ["നടീൽ", "വളർച്ച", "വിളവെടുപ്പ്"], "const": "പരിമിതികൾ", "ask": "ചോദ്യം", "btn": "ഉപദേശം", "header": "ഉപദേശം", "err": "ചോദ്യം നൽകുക."},
+        "Punjabi (ਪੰਜਾਬੀ)": {"title": "🌱 ਸਮਾਰਟ ਖੇਤੀ ਸਹਾਇਕ", "loc": "ਸਥਾਨ", "stage": "ਪੜਾਅ", "stages": ["ਬਿਜਾਈ", "ਵਾਧਾ", "ਕਟਾਈ"], "const": "ਪਾਬੰਦੀਆਂ", "ask": "ਸਵਾਲ", "btn": "ਸਲਾਹ", "header": "ਸਲਾਹ", "err": "ਸਵਾਲ ਲਿਖੋ।"},
+        "Assamese (অসমীয়া)": {"title": "🌱 স্মাৰ্ট কৃষি সহায়ক", "loc": "স্থান", "stage": "পৰ্যায়", "stages": ["ৰোপণ", "বৃদ্ধি", "চপোৱা"], "const": "সীমাবদ্ধতা", "ask": "প্ৰশ্ন", "btn": "পৰামৰ্শ", "header": "পৰামৰ্শ", "err": "প্ৰশ্ন লিখক।"},
+        "Maithili (मैथिली)": {"title": "🌱 स्मार्ट कृषि सहायक", "loc": "स्थान", "stage": "चरण", "stages": ["रोपनी", "विकास", "कटनी"], "const": "सीमा", "ask": "प्रश्न", "btn": "सलाह", "header": "सलाह", "err": "प्रश्न लिखू।"},
+        "Santali (ᱥᱟᱱᱛᱟᱲᱤ)": {"title": "🌱 ᱥᱢᱟᱨᱴ ᱪᱟᱥ ᱜᱚᱲᱚᱭᱤᱡ", "loc": "ᱡᱟᱭᱜᱟ", "stage": "ᱚᱠᱛᱚ", "stages": ["ᱨᱚᱦᱚᱭ", "ᱦᱟᱨᱟᱜ", "ᱤᱨ"], "const": "ᱵᱟᱫᱷᱟ", "ask": "ᱠᱩᱞᱤᱭᱟᱢ", "btn": "ᱵᱩᱫᱷᱤ", "header": "ᱵᱩᱫᱷᱤ", "err": "ᱠᱩᱠᱞᱤ ᱚᱞ ᱢᱮ"},
+        "Kashmiri (کٲشُر)": {"title": "🌱 سمارٹ کٲشتی مددگار", "loc": "جائے", "stage": "حالت", "stages": ["تخم ریزی", "بۆڈ گژھُن", "لۆنُن"], "const": "رُکاوٹ", "ask": "سوال", "btn": "مشورہ", "header": "مشورہ", "err": "سوال لکھو"},
+        "Nepali (नेपाली)": {"title": "🌱 स्मार्ट कृषि सहायक", "loc": "स्थान", "stage": "अवस्था", "stages": ["रोपण", "वृद्धि", "कटानी"], "const": "सीमाहरू", "ask": "प्रश्न", "btn": "सल्लाह", "header": "सल्लाह", "err": "प्रश्न लेख्नुहोस्।"},
+        "Konkani (कोंकणी)": {"title": "🌱 स्मार्ट शेती सहाय्यक", "loc": "सुवात", "stage": "अवस्था", "stages": ["लावड", "वाढ", "काढणी"], "const": "मर्यादा", "ask": "प्रश्न", "btn": "सल्लो", "header": "सल्लो", "err": "प्रश्न बरयात।"},
+        "Sindhi (سنڌي)": {"title": "🌱 سمارٽ فارمنگ مددگار", "loc": "جڳهه", "stage": "مرحلو", "stages": ["پووکي", "واڌ", "لوڏا"], "const": "رڪاوٽون", "ask": "سوال", "btn": "صلاح", "header": "صلاح", "err": "سوال لکھو।"},
+        "Dogri (डोगरी)": {"title": "🌱 स्मार्ट खेती सहायक", "loc": "थाहं", "stage": "चरण", "stages": ["बिजाई", "बधाई", "कटाई"], "const": "रुकावट", "ask": "सुआल", "btn": "सलाह", "header": "सलाह", "err": "सुआल लिखो।"},
+        "Manipuri (মৈতৈলোন)": {"title": "🌱 স্মার্ত ফারমিং এসিস্তেন্ত", "loc": "মফম", "stage": "পর্যায়", "stages": ["থাবা", "চাউখৎপা", "লোউবা"], "const": "অয়েৎপা", "ask": "ৱাহং", "btn": "পাউতাক", "header": "পাউতাক", "err": "ৱাহং ইবীয়ু।"},
+        "Bodo (बर')": {"title": "🌱 स्मार्ट आबाद अनथायग्रा", "loc": "जायगा", "stage": "थाखो", "stages": ["गायनाय", "देरनाय", "हाखायনাय"], "const": "हेंथा", "ask": "सोंलु", "btn": "सुबुंथि", "header": "सुबुंथि", "err": "सोंलु लिर।"},
+        "Sanskrit (संस्कृतम्)": {"title": "🌱 चतुर कृषि सहायक:", "loc": "स्थानम्", "stage": "अवस्था", "stages": ["वपनम्", "वर्धनम्", "लवनम्"], "const": "प्रतिबन्धा:", "ask": "प्रश्नं", "btn": "परामर्शं", "header": "परामर्श:", "err": "प्रश्नं लिखतु।"}
+    }
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+# 3. 🖥️ Interface Layout
+st.set_page_config(page_title="AgriBot", page_icon="🌱", layout="centered")
 
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+# Language Selection
+lang_list = list(st.session_state.translations.keys())
+sel_lang = st.sidebar.selectbox("🌐 Select Language / भाषा चुनें", lang_list)
+ui = st.session_state.translations[sel_lang]
 
-user_input = st.chat_input("Type a message")
+st.title(ui["title"])
 
-if user_input:
-    st.session_state.messages.append(
-        {"role": "user", "content": user_input}
-    )
+# Using a Form to prevent app refresh on every keystroke
+with st.form("agri_input_form"):
+    c1, c2 = st.columns(2)
+    with c1:
+        loc = st.text_input(ui["loc"])
+    with c2:
+        stg = st.selectbox(ui["stage"], ui["stages"])
+    
+    con = st.text_input(ui["const"])
+    ques = st.text_area(ui["ask"])
+    submitted = st.form_submit_button(ui["btn"])
 
-    with st.chat_message("user"):
-        st.markdown(user_input)
-
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=user_input
-    )
-
-    reply = response.text.strip()
-
-    st.session_state.messages.append(
-        {"role": "assistant", "content": reply}
-    )
-
-    with st.chat_message("assistant"):
-        st.markdown(reply)
+# 4. ⚡ Core AI Logic with Streaming Output
+if submitted:
+    if ques.strip():
+        # Get clean language name (removes the native script for the AI)
+        clean_lang = sel_lang.split(" (")[0]
+        
+        # High-context prompt for better farming advice
+        prompt = (f"You are a professional agricultural consultant. "
+                  f"Provide practical, safe, and actionable advice in the {clean_lang} language. "
+                  f"Context - Location: {loc}, Crop Growth Stage: {stg}, Specific Constraints: {con}. "
+                  f"Farmer's Question: {ques}. "
+                  f"Format the answer in 3-5 clear bullet points.")
+        
+        st.divider()
+        st.subheader(ui["header"])
+        
+        # Empty container for the live-streaming text
+        res_container = st.empty()
+        full_text = ""
+        
+        try:
+            # Stream=True allows for word-by-word generation (fastest experience)
+            response = model.generate_content(prompt, stream=True)
+            for chunk in response:
+                full_text += chunk.text
+                res_container.markdown(full_text + "▌") # Animated cursor
+            res_container.markdown(full_text)
+        except Exception as e:
+            st.error("Error connecting to Gemini. Please check your internet or API limits.")
+    else:
+        st.error(ui["err"])
